@@ -166,6 +166,14 @@ const EnvSchema = z.object({
     .int()
     .positive()
     .default(3600), // 1h
+  LANGFUSE_CACHE_ENVIRONMENT_GRANTS_ENABLED: z
+    .enum(["true", "false"])
+    .default("true"),
+  LANGFUSE_CACHE_ENVIRONMENT_GRANTS_TTL_SECONDS: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(60),
   CLICKHOUSE_URL: z.url(),
   CLICKHOUSE_READ_ONLY_URL: z.url().optional(),
   CLICKHOUSE_EVENTS_READ_ONLY_URL: z.url().optional(),

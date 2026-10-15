@@ -21,7 +21,12 @@ import {
   getEnvironmentsForProject,
   invalidateCachedOrgApiKeys,
 } from "@langfuse/shared/src/server";
-import { transferRoleAssignments } from "@langfuse/shared/rbac/server";
+import {
+  invalidateEnvironmentGrants,
+  transferEnvironmentRoleGrants,
+  transferRoleAssignments,
+} from "@langfuse/shared/rbac/server";
+import { type PrincipalId } from "@langfuse/shared/rbac";
 import { reconcileTopicsConnectionsForProject } from "@langfuse/shared/topics/server";
 import { randomUUID } from "crypto";
 import { LangfuseConflictError, StringNoHTMLNonEmpty } from "@langfuse/shared";
@@ -326,6 +331,7 @@ export const projectsRouter = createTRPCRouter({
         after: { orgId: input.targetOrgId },
       });
 
+      let droppedGrantPrincipals: PrincipalId[] = [];
       await ctx.prisma.$transaction(async (tx) => {
         await tx.projectMembership.deleteMany({
           where: {
@@ -344,7 +350,16 @@ export const projectsRouter = createTRPCRouter({
         // Move the project's api-key assignments to the destination org and
         // drop its user assignments, matching the membership wipe above.
         await transferRoleAssignments(tx, input.projectId, input.targetOrgId);
+        droppedGrantPrincipals = await transferEnvironmentRoleGrants(
+          tx,
+          input.projectId,
+          input.targetOrgId,
+        );
       });
+      await invalidateEnvironmentGrants(
+        input.projectId,
+        droppedGrantPrincipals,
+      );
 
       // API keys need to be deleted from cache. Otherwise, they will still be valid.
       // It has to be called after the db is done to prevent new API keys from being cached.
