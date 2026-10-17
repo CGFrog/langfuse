@@ -35,6 +35,14 @@
       "import": "./dist/src/server/query-ast/schema.js",
       "require": "./dist/src/server/query-ast/schema.js"
     },
+    "./src/server/query-ast/compile": {
+      "import": "./dist/src/server/query-ast/compile.js",
+      "require": "./dist/src/server/query-ast/compile.js"
+    },
+    "./src/server/query-ast/dialect": {
+      "import": "./dist/src/server/query-ast/dialect.js",
+      "require": "./dist/src/server/query-ast/dialect.js"
+    },
     "./src/server/transcript/ordering": {
       "import": "./dist/src/server/transcript/ordering.js",
       "require": "./dist/src/server/transcript/ordering.js"

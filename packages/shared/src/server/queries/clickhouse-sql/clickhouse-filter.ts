@@ -6,7 +6,15 @@ import {
 import { InvalidRequestError } from "../../../errors";
 import { convertDateToClickhouseDateTime } from "../../clickhouse/client";
 import { clickhouseCompliantRandomCharacters } from "../../repositories";
-import { escapeSqlLikePattern } from "../../utils/sqlLike";
+import { escapeSqlLikePattern, globToLikePattern } from "../../utils/sqlLike";
+import {
+  INTERNAL_ENVIRONMENT_PREFIX,
+  type EnvironmentDecisionList,
+} from "../../../features/rbac/environmentAccess";
+import {
+  toEnvironmentPredicate,
+  type EnvironmentPredicate,
+} from "../../../features/rbac/environmentPredicate";
 import {
   assertValidFtsMatchFilter,
   bareFtsField,
@@ -799,6 +807,58 @@ export class BooleanFilter implements Filter {
       query: `${this.tablePrefix ? this.tablePrefix + "." : ""}${this.field} ${this.operator} {${varName}: Boolean}`,
       params: { [varName]: this.value },
     };
+  }
+}
+
+/**
+ * Restricts rows to the environments a principal may access, rendering an
+ * environment decision list as a boolean over `=`, `LIKE` and `startsWith`.
+ */
+export class EnvironmentAccessFilter implements Filter {
+  public clickhouseTable: string;
+  public field: string;
+  public tablePrefix?: string;
+  public operator = "any of" as const;
+  private readonly predicate: EnvironmentPredicate;
+
+  constructor(opts: {
+    decisions: EnvironmentDecisionList;
+    clickhouseTable: string;
+    tablePrefix?: string;
+    field?: string;
+  }) {
+    this.clickhouseTable = opts.clickhouseTable;
+    this.tablePrefix = opts.tablePrefix;
+    this.field = opts.field ?? "environment";
+    this.predicate = toEnvironmentPredicate(opts.decisions);
+  }
+
+  apply(): ClickhouseFilter {
+    const column = `${this.tablePrefix ? this.tablePrefix + "." : ""}${this.field}`;
+    const params: Record<string, string> = {};
+    const bind = (value: string) => {
+      const name = `environmentAccess${clickhouseCompliantRandomCharacters()}`;
+      params[name] = value;
+      return `{${name}: String}`;
+    };
+    const render = (node: EnvironmentPredicate): string => {
+      switch (node.kind) {
+        case "const":
+          return node.value ? "1 = 1" : "1 = 0";
+        case "eq":
+          return `${column} = ${bind(node.value)}`;
+        case "glob":
+          return `${column} LIKE ${bind(globToLikePattern(node.pattern))}`;
+        case "internal":
+          return `startsWith(${column}, ${bind(INTERNAL_ENVIRONMENT_PREFIX)})`;
+        case "not":
+          return `NOT (${render(node.arg)})`;
+        case "and":
+        case "or":
+          return `(${node.args.map(render).join(node.kind === "and" ? " AND " : " OR ")})`;
+      }
+    };
+    return { query: render(this.predicate), params };
   }
 }
 

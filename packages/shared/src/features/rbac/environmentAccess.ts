@@ -26,7 +26,8 @@ import {
  * match only internal environments, so the two namespaces are disjoint.
  */
 
-const INTERNAL_ENVIRONMENT_PREFIX = "langfuse";
+/** Prefix of the reserved internal environment namespace. */
+export const INTERNAL_ENVIRONMENT_PREFIX = "langfuse";
 const INTERNAL_PATTERN_PREFIX = "langfuse-";
 
 /** Roles that hold project administration and therefore ignore environment grants. */

@@ -6,7 +6,9 @@ import {
 } from "kysely";
 
 import { ClickHouseQueryCompiler } from "./compiler";
+import { type EnvironmentDecisionList } from "../../features/rbac/environmentAccess";
 import { DedupLoweringPlugin } from "./dedup";
+import { EnvironmentAccessPlugin } from "./environmentAccess";
 import { SoftDeleteFilterPlugin } from "./softDelete";
 import {
   TenancyInjectionPlugin,
@@ -34,7 +36,8 @@ export type ClickhouseCompilable = {
  * through here: the `projectId` parameter is required, so a caller cannot
  * compile without a tenancy scope — omitting it is a compile-time type error.
  * The query reads exactly that one project. Soft-deleted rows are filtered
- * out, tenancy is injected from that project, per-table dedup is applied from
+ * out, rows outside `options.environment` are filtered out when it restricts
+ * access, tenancy is injected from that project, per-table dedup is applied from
  * the registry, and the dialect compiler refuses to emit SQL unless the tree
  * was identity-stamped by the tenancy and dedup passes (a copied property is
  * not enough). The runtime `requireProjectId` guard remains as
@@ -44,10 +47,17 @@ export type ClickhouseCompilable = {
 export function compileClickhouseQuery(
   query: ClickhouseCompilable,
   projectId: string,
+  options?: { environment?: EnvironmentDecisionList },
 ): CompiledClickhouseQuery {
   const scope = requireProjectId(projectId);
-  const stamped = query
-    .withPlugin(new SoftDeleteFilterPlugin())
+  const environment = options?.environment;
+  const softDeleted = query.withPlugin(new SoftDeleteFilterPlugin());
+  // Unrestricted access adds no plugin, so its SQL is unchanged.
+  const restricted =
+    environment && !(environment.kind === "constant" && environment.allow)
+      ? softDeleted.withPlugin(new EnvironmentAccessPlugin(environment))
+      : softDeleted;
+  const stamped = restricted
     .withPlugin(new TenancyInjectionPlugin(scope))
     .withPlugin(new DedupLoweringPlugin())
     .toOperationNode();
